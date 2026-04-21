@@ -56,6 +56,14 @@ const DELETE_PRODUCT = gql`
   }
 `;
 
+const ADD_PRODUCT = gql`
+  mutation AddProduct($name: String!, $price: Float!, $category: String!, $chip: String, $year: String, $picture: String) {
+    addProduct(name: $name, price: $price, category: $category, chip: $chip, year: $year, picture: $picture) {
+      id name price picture chip year
+    }
+  }
+`;
+
 const categoryRoutes: Record<string, string> = {
   getAlliMac: "imac", getAlliPhones: "iphone", getAllMacBookAir: "macbook_air",
   getAllMacBookPro: "macbook_pro", getAllMacMini: "mac_mini", getAllMacStudio: "mac_studio",
@@ -109,6 +117,7 @@ function Dashboard() {
   const { data: productsData, loading: productsLoading, refetch: refetchProducts } = useQuery(GET_ALL_PRODUCTS);
   const [updateStatus] = useMutation(UPDATE_STATUS);
   const [deleteProduct] = useMutation(DELETE_PRODUCT);
+  const [addProduct] = useMutation(ADD_PRODUCT);
 
   const orders = ordersData?.getAllOrders ?? [];
   const users = usersData?.getAllUsers ?? [];
@@ -162,11 +171,21 @@ function Dashboard() {
     if (!addForm.name || !addForm.price) return;
     setAddLoading(true);
     try {
-      // Backend-д addProduct mutation нэмсний дараа энд холбоно
-      // Одоогоор alert харуулна
-      alert(`"${addForm.name}" нэмэх mutation backend-д хэрэгтэй!`);
+      await addProduct({
+        variables: {
+          name: addForm.name,
+          price: parseFloat(addForm.price),
+          category: addForm.category,
+          chip: addForm.chip || undefined,
+          year: addForm.year || undefined,
+          picture: addForm.picture || undefined,
+        },
+      });
+      await refetchProducts();
       setShowAddModal(false);
       setAddForm(EMPTY_FORM);
+    } catch (e) {
+      alert("Бүтээгдэхүүн нэмэхэд алдаа гарлаа");
     } finally {
       setAddLoading(false);
     }
@@ -572,7 +591,7 @@ function Dashboard() {
               </div>
 
               {[
-                { key: "name",    label: "Нэр *",        placeholder: "iPhone 16 Pro Max" },
+                { key: "name",    label: "Нэр *",        placeholder: "Бүтээгдэхүүний нэр" },
                 { key: "price",   label: "Үнэ ($) *",    placeholder: "1199" },
                 { key: "chip",    label: "Чип",           placeholder: "A18 Pro" },
                 { key: "year",    label: "Жил",           placeholder: "2024" },
