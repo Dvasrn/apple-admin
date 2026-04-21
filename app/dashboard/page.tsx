@@ -96,6 +96,7 @@ function Dashboard() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState(EMPTY_FORM);
   const [addLoading, setAddLoading] = useState(false);
+  
 
   useEffect(() => {
     if (typeof window !== "undefined" && !localStorage.getItem("admin_auth")) {
