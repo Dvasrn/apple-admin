@@ -164,6 +164,7 @@ const DELETE_PRODUCT = gql`
   }
 `;
 
+
 const ADD_PRODUCT = gql`
   mutation AddProduct(
     $name: String!
@@ -287,6 +288,9 @@ function Dashboard() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState(EMPTY_FORM);
   const [addLoading, setAddLoading] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [editForm, setEditForm] = useState(EMPTY_FORM);
+  const [editLoading, setEditLoading] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined" && !localStorage.getItem("admin_auth")) {
@@ -304,7 +308,7 @@ function Dashboard() {
     data: productsData,
     loading: productsLoading,
     refetch: refetchProducts,
-  } = useQuery(GET_ALL_PRODUCTS);
+  } = useQuery(GET_ALL_PRODUCTS, { fetchPolicy: "network-only" });
   const [updateStatus] = useMutation(UPDATE_STATUS);
   const [deleteProduct] = useMutation(DELETE_PRODUCT);
   const [addProduct] = useMutation(ADD_PRODUCT);
@@ -388,6 +392,42 @@ function Dashboard() {
       alert("Бүтээгдэхүүн нэмэхэд алдаа гарлаа");
     } finally {
       setAddLoading(false);
+    }
+  };
+
+  const openEdit = (p: any) => {
+    setEditingProduct(p);
+    setEditForm({
+      name: p.name ?? "",
+      price: p.price?.toString() ?? "",
+      chip: p.chip ?? "",
+      year: p.year?.toString() ?? "",
+      picture: p.picture ?? "",
+      category: p.category,
+    });
+  };
+
+  const handleEdit = async () => {
+    if (!editingProduct || !editForm.name || !editForm.price) return;
+    setEditLoading(true);
+    try {
+      await deleteProduct({ variables: { id: editingProduct.id, category: editingProduct.category } });
+      await addProduct({
+        variables: {
+          name: editForm.name,
+          price: parseFloat(editForm.price),
+          category: editForm.category,
+          chip: editForm.chip || undefined,
+          year: editForm.year ? parseInt(editForm.year) : undefined,
+          picture: editForm.picture || undefined,
+        },
+      });
+      await refetchProducts();
+      setEditingProduct(null);
+    } catch {
+      alert("Засахад алдаа гарлаа");
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -676,36 +716,29 @@ function Dashboard() {
                         key={p.id}
                         className="bg-neutral-900 rounded-2xl border border-neutral-800 p-4 hover:border-neutral-700 transition-all group relative"
                       >
-                        {/* Delete button — hover дээр харагдана */}
-                        <button
-                          onClick={() => handleDelete(p.id, p.category, p.name)}
-                          disabled={deleting === p.id}
-                          className="absolute top-3 right-3 w-7 h-7 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:border-red-500/40 transition-all z-10 text-neutral-500 hover:text-red-400 text-[12px]"
-                        >
-                          {deleting === p.id ? (
-                            <svg
-                              className="animate-spin w-3 h-3"
-                              viewBox="0 0 24 24"
-                            >
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                                fill="none"
-                              />
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                              />
-                            </svg>
-                          ) : (
-                            "✕"
-                          )}
-                        </button>
+                        {/* Edit / Delete buttons — hover дээр харагдана */}
+                        <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
+                          <button
+                            onClick={() => openEdit(p)}
+                            className="w-7 h-7 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center hover:bg-blue-500/20 hover:border-blue-500/40 text-neutral-500 hover:text-blue-400 text-[12px]"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            onClick={() => handleDelete(p.id, p.category, p.name)}
+                            disabled={deleting === p.id}
+                            className="w-7 h-7 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center hover:bg-red-500/20 hover:border-red-500/40 text-neutral-500 hover:text-red-400 text-[12px]"
+                          >
+                            {deleting === p.id ? (
+                              <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                              </svg>
+                            ) : (
+                              "✕"
+                            )}
+                          </button>
+                        </div>
 
                         <div className="w-full h-32 bg-neutral-800 rounded-xl flex items-center justify-center overflow-hidden mb-3">
                           {p.picture ? (
@@ -983,6 +1016,89 @@ function Dashboard() {
           </div>
         </main>
       </div>
+
+      {/* EDIT PRODUCT MODAL */}
+      {editingProduct && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.75)" }}
+        >
+          <div className="bg-neutral-900 rounded-2xl border border-neutral-800 p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-[16px] font-semibold">Бүтээгдэхүүн засах</h2>
+              <button
+                onClick={() => setEditingProduct(null)}
+                className="w-7 h-7 rounded-lg bg-neutral-800 text-neutral-400 hover:text-white transition-colors flex items-center justify-center text-[14px]"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {[
+                { key: "name", label: "Нэр *", placeholder: "Бүтээгдэхүүний нэр" },
+                { key: "price", label: "Үнэ ($) *", placeholder: "1199" },
+                { key: "chip", label: "Чип", placeholder: "A18 Pro" },
+                { key: "year", label: "Жил", placeholder: "2024" },
+                { key: "picture", label: "Зургийн URL", placeholder: "https://..." },
+              ].map((field) => (
+                <div key={field.key}>
+                  <label className="text-[11px] text-neutral-500 mb-1 block">
+                    {field.label}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={field.placeholder}
+                    value={(editForm as any)[field.key]}
+                    onChange={(e) =>
+                      setEditForm((prev) => ({ ...prev, [field.key]: e.target.value }))
+                    }
+                    className="w-full h-10 px-3 rounded-xl bg-neutral-800 border border-neutral-700 text-[13px] text-white placeholder-neutral-600 outline-none focus:border-neutral-500 transition-colors"
+                  />
+                </div>
+              ))}
+
+              {editForm.picture && (
+                <div className="flex items-center gap-3 p-3 bg-neutral-800 rounded-xl">
+                  <img
+                    src={editForm.picture}
+                    alt="preview"
+                    className="w-12 h-12 object-contain rounded-lg bg-neutral-700"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                  <div>
+                    <p className="text-[12px] font-medium text-white">{editForm.name || "Нэр оруулна уу"}</p>
+                    <p className="text-[11px] text-neutral-400">{editForm.price ? `$${Number(editForm.price).toLocaleString()}` : ""}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setEditingProduct(null)}
+                className="flex-1 h-10 rounded-xl border border-neutral-700 text-neutral-400 text-[13px] hover:border-neutral-500 transition-all"
+              >
+                Цуцлах
+              </button>
+              <button
+                onClick={handleEdit}
+                disabled={!editForm.name || !editForm.price || editLoading}
+                className="flex-1 h-10 rounded-xl bg-white text-neutral-900 text-[13px] font-semibold hover:bg-neutral-100 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {editLoading ? (
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  "Хадгалах"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ADD PRODUCT MODAL */}
       {showAddModal && (
