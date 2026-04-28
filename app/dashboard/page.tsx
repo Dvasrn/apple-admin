@@ -527,7 +527,7 @@ function Dashboard() {
                   {[
                     {
                       label: "Нийт орлого",
-                      value: `${totalRevenue.toLocaleString()}₮`,
+                      value: `$${totalRevenue.toLocaleString()}`,
                       sub: "Цуцлагдаагүй",
                     },
                     {
@@ -642,7 +642,7 @@ function Dashboard() {
                               </span>
                             </div>
                             <p className="text-[13px] font-semibold">
-                              {o.total.toLocaleString()}₮
+                              ${o.total.toLocaleString()}
                             </p>
                           </div>
                         </div>
@@ -871,7 +871,7 @@ function Dashboard() {
                                 </span>
                               </div>
                               <p className="text-[14px] font-semibold">
-                                {o.total.toLocaleString()}₮
+                                ${o.total.toLocaleString()}
                               </p>
                               <span className="text-neutral-600 text-[12px]">
                                 {isOpen ? "▲" : "▼"}
@@ -1003,7 +1003,7 @@ function Dashboard() {
                               {userOrders
                                 .reduce((s: number, o: any) => s + o.total, 0)
                                 .toLocaleString()}
-                              ₮
+                              $
                             </p>
                           </div>
                         </div>
