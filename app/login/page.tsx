@@ -1,8 +1,10 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { GoogleLogin, CredentialResponse } from "@react-oauth/google";
 
 const ADMIN_PASS = process.env.NEXT_PUBLIC_ADMIN_PASS || "admin2026";
+const GRAPHQL_URL = process.env.NEXT_PUBLIC_GRAPHQL_URL!;
 
 export default function LoginPage() {
   const [pass, setPass] = useState("");
@@ -15,6 +17,35 @@ export default function LoginPage() {
       router.push("/dashboard");
     } else {
       setError("Нууц үг буруу байна");
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    if (!credentialResponse.credential) return;
+    try {
+      const res = await fetch(GRAPHQL_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: `mutation GoogleSignIn($idToken: String!) {
+            googleSignIn(idToken: $idToken) {
+              _id
+              username
+              email
+            }
+          }`,
+          variables: { idToken: credentialResponse.credential },
+        }),
+      });
+      const { data, errors } = await res.json();
+      if (errors || !data?.googleSignIn) {
+        setError("Google нэвтрэлт амжилтгүй боллоо");
+        return;
+      }
+      localStorage.setItem("admin_auth", "true");
+      router.push("/dashboard");
+    } catch {
+      setError("Google нэвтрэлт амжилтгүй боллоо");
     }
   };
 
@@ -45,6 +76,23 @@ export default function LoginPage() {
           >
             Нэвтрэх
           </button>
+
+          <div className="flex items-center gap-3 my-1">
+            <div className="flex-1 h-px bg-neutral-800" />
+            <span className="text-[12px] text-neutral-600">эсвэл</span>
+            <div className="flex-1 h-px bg-neutral-800" />
+          </div>
+
+          <div className="flex justify-center">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => setError("Google нэвтрэлт амжилтгүй боллоо")}
+              theme="filled_black"
+              shape="rectangular"
+              size="large"
+              width="100%"
+            />
+          </div>
         </div>
       </div>
     </div>

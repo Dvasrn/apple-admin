@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@apollo/client": "^3.11.0",
+    "@react-oauth/google": "^0.13.5",
     "graphql": "^16.13.2",
     "next": "16.2.4",
     "next-auth": "^4.24.14",
