@@ -77,7 +77,7 @@ export default function LoginPage() {
             Нэвтрэх
           </button>
 
-          <div className="flex items-center gap-3 my-1">
+          {/* <div className="flex items-center gap-3 my-1">
             <div className="flex-1 h-px bg-neutral-800" />
             <span className="text-[12px] text-neutral-600">эсвэл</span>
             <div className="flex-1 h-px bg-neutral-800" />
@@ -92,7 +92,7 @@ export default function LoginPage() {
               size="large"
               width="100%"
             />
-          </div>
+          </div> */}
         </div>
       </div>
     </div>
