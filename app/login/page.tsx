@@ -40,7 +40,7 @@ export default function LoginPage() {
             Admin Dashboard
           </h1>
           <p className="text-[13px] text-neutral-500 mt-1">
-            Apple Store Mongolia
+            Banana Store Mongolia
           </p>
         </div>
 

@@ -512,7 +512,7 @@ function Dashboard() {
               </div>
               <div>
                 <p className="text-[13px] font-semibold">Admin</p>
-                <p className="text-[11px] text-neutral-500">Apple Store MN</p>
+                <p className="text-[11px] text-neutral-500">Banana Store MN</p>
               </div>
             </div>
           </div>

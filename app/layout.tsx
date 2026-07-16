@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Admin Dashboard — Apple Store MN",
-  description: "Apple Store Mongolia захиалга, бүтээгдэхүүний удирдлага",
+  title: "Admin Dashboard — Banana Store MN",
+  description: "Banana Store Mongolia захиалга, бүтээгдэхүүний удирдлага",
 };
 
 // Хуудас будагдахаас өмнө theme-ийг тавина (FOUC-с сэргийлнэ). Default: dark
