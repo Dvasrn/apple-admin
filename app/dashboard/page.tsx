@@ -9,6 +9,7 @@ import {
   gql,
 } from "@apollo/client";
 import { useQuery, useMutation } from "@apollo/client/react";
+import ThemeToggle from "../components/ThemeToggle";
 
 const client = new ApolloClient({
   uri:
@@ -194,6 +195,48 @@ const ADD_PRODUCT = gql`
   }
 `;
 
+interface OrderItem {
+  name: string;
+  price: number;
+  qty: number;
+  picture?: string;
+}
+
+interface Order {
+  id: string;
+  username?: string;
+  email?: string;
+  phone?: string;
+  items: OrderItem[];
+  subtotal: number;
+  shipping: number;
+  total: number;
+  address: string;
+  paymentMethod: string;
+  status: string;
+  createdAt: string;
+  userId?: string;
+}
+
+interface User {
+  _id: string;
+  username: string;
+  phoneNumber?: string;
+  email?: string;
+  authProvider?: string;
+}
+
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  picture?: string;
+  chip?: string;
+  year?: number;
+}
+
+type ProductWithCategory = Product & { category: string };
+
 const categoryRoutes: Record<string, string> = {
   getAlliMac: "imac",
   getAlliPhones: "iphone",
@@ -230,31 +273,31 @@ const STATUS: Record<
 > = {
   pending: {
     label: "Хүлээгдэж байна",
-    color: "text-amber-400",
+    color: "text-amber-600 dark:text-amber-400",
     bg: "bg-amber-400/10",
     dot: "bg-amber-400",
   },
   paid: {
     label: "Төлөгдсөн",
-    color: "text-blue-400",
+    color: "text-blue-600 dark:text-blue-400",
     bg: "bg-blue-400/10",
     dot: "bg-blue-400",
   },
   delivering: {
     label: "Хүргэж байна",
-    color: "text-purple-400",
+    color: "text-purple-600 dark:text-purple-400",
     bg: "bg-purple-400/10",
     dot: "bg-purple-400",
   },
   delivered: {
     label: "Хүргэгдсэн",
-    color: "text-green-400",
+    color: "text-green-600 dark:text-green-400",
     bg: "bg-green-400/10",
     dot: "bg-green-400",
   },
   cancelled: {
     label: "Цуцлагдсан",
-    color: "text-red-400",
+    color: "text-red-600 dark:text-red-400",
     bg: "bg-red-400/10",
     dot: "bg-red-400",
   },
@@ -281,7 +324,7 @@ const EMPTY_FORM = {
 function Dashboard() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("overview");
-  const [selected, setSelected] = useState<any>(null);
+  const [selected, setSelected] = useState<Order | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [orderSearch, setOrderSearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
@@ -290,27 +333,37 @@ function Dashboard() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState(EMPTY_FORM);
   const [addLoading, setAddLoading] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [editingProduct, setEditingProduct] =
+    useState<ProductWithCategory | null>(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editLoading, setEditLoading] = useState(false);
 
+  const [authChecked, setAuthChecked] = useState(false);
+
   useEffect(() => {
-    if (typeof window !== "undefined" && !localStorage.getItem("admin_auth")) {
-      router.push("/login");
+    if (!localStorage.getItem("admin_auth")) {
+      router.replace("/login");
+    } else {
+      // Mount-gate: localStorage зөвхөн client дээр байдаг тул эндээс шалгана
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAuthChecked(true);
     }
-  }, []);
+  }, [router]);
 
   const {
     data: ordersData,
     loading: ordersLoading,
     refetch,
-  } = useQuery(GET_ALL_ORDERS);
-  const { data: usersData, loading: usersLoading } = useQuery(GET_ALL_USERS);
+  } = useQuery<{ getAllOrders: Order[] }>(GET_ALL_ORDERS);
+  const { data: usersData, loading: usersLoading } =
+    useQuery<{ getAllUsers: User[] }>(GET_ALL_USERS);
   const {
     data: productsData,
     loading: productsLoading,
     refetch: refetchProducts,
-  } = useQuery(GET_ALL_PRODUCTS, { fetchPolicy: "network-only" });
+  } = useQuery<Record<string, Product[]>>(GET_ALL_PRODUCTS, {
+    fetchPolicy: "network-only",
+  });
   const [updateStatus] = useMutation(UPDATE_STATUS);
   const [deleteProduct] = useMutation(DELETE_PRODUCT);
   const [addProduct] = useMutation(ADD_PRODUCT);
@@ -318,9 +371,9 @@ function Dashboard() {
   const orders = ordersData?.getAllOrders ?? [];
   const users = usersData?.getAllUsers ?? [];
 
-  const allProducts = productsData
-    ? Object.entries(productsData).flatMap(([key, arr]: [string, any]) =>
-        (arr ?? []).map((p: any) => ({
+  const allProducts: ProductWithCategory[] = productsData
+    ? Object.entries(productsData).flatMap(([key, arr]) =>
+        (arr ?? []).map((p) => ({
           ...p,
           category: categoryRoutes[key] ?? key,
         })),
@@ -336,7 +389,7 @@ function Dashboard() {
     return matchCat && matchSearch;
   });
 
-  const filteredOrders = orders.filter((o: any) => {
+  const filteredOrders = orders.filter((o: Order) => {
     const matchStatus = statusFilter === "all" || o.status === statusFilter;
     const matchSearch =
       !orderSearch ||
@@ -347,17 +400,21 @@ function Dashboard() {
   });
 
   const totalRevenue = orders
-    .filter((o: any) => o.status !== "cancelled")
-    .reduce((s: number, o: any) => s + o.total, 0);
+    .filter((o: Order) => o.status !== "cancelled")
+    .reduce((s: number, o: Order) => s + o.total, 0);
   const todayCount = orders.filter(
-    (o: any) =>
+    (o: Order) =>
       new Date(o.createdAt).toDateString() === new Date().toDateString(),
   ).length;
 
   const handleStatus = async (id: string, status: string) => {
-    await updateStatus({ variables: { id, status } });
-    refetch();
-    if (selected?.id === id) setSelected({ ...selected, status });
+    try {
+      await updateStatus({ variables: { id, status } });
+      refetch();
+      if (selected?.id === id) setSelected({ ...selected, status });
+    } catch {
+      alert("Төлөв өөрчлөхөд алдаа гарлаа");
+    }
   };
 
   const handleDelete = async (id: string, category: string, name: string) => {
@@ -366,7 +423,7 @@ function Dashboard() {
     try {
       await deleteProduct({ variables: { id, category } });
       await refetchProducts();
-    } catch (e) {
+    } catch {
       alert("Устгахад алдаа гарлаа");
     } finally {
       setDeleting(null);
@@ -390,14 +447,14 @@ function Dashboard() {
       await refetchProducts();
       setShowAddModal(false);
       setAddForm(EMPTY_FORM);
-    } catch (e) {
+    } catch {
       alert("Бүтээгдэхүүн нэмэхэд алдаа гарлаа");
     } finally {
       setAddLoading(false);
     }
   };
 
-  const openEdit = (p: any) => {
+  const openEdit = (p: ProductWithCategory) => {
     setEditingProduct(p);
     setEditForm({
       name: p.name ?? "",
@@ -440,14 +497,17 @@ function Dashboard() {
     { id: "users", label: "Хэрэглэгчид", icon: "◉" },
   ] as { id: Tab; label: string; icon: string }[];
 
+  // Нэвтрэлт шалгагдтал юу ч харуулахгүй (flash-с сэргийлнэ)
+  if (!authChecked) return null;
+
   return (
-    <div className="min-h-screen bg-neutral-950 text-white">
+    <div className="min-h-screen bg-neutral-100 dark:bg-neutral-950 text-neutral-900 dark:text-white">
       <div className="flex h-screen">
         {/* Sidebar */}
-        <aside className="w-56 border-r border-neutral-800 flex-col bg-neutral-900 hidden md:flex flex-shrink-0">
-          <div className="px-5 py-5 border-b border-neutral-800">
+        <aside className="w-56 border-r border-neutral-200 dark:border-neutral-800 flex-col bg-white dark:bg-neutral-900 hidden md:flex flex-shrink-0">
+          <div className="px-5 py-5 border-b border-neutral-200 dark:border-neutral-800">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-sm">
+              <div className="w-8 h-8 bg-neutral-900 dark:bg-white rounded-lg flex items-center justify-center text-sm">
                 🛍️
               </div>
               <div>
@@ -463,32 +523,32 @@ function Dashboard() {
                 onClick={() => setTab(item.id)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all text-left ${
                   tab === item.id
-                    ? "bg-white/10 text-white"
-                    : "text-neutral-400 hover:text-white hover:bg-white/5"
+                    ? "bg-neutral-900/10 dark:bg-white/10 text-neutral-900 dark:text-white"
+                    : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-900/5 dark:hover:bg-white/5"
                 }`}
               >
                 <span>{item.icon}</span>
                 {item.label}
                 {item.id === "orders" && orders.length > 0 && (
-                  <span className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full">
+                  <span className="ml-auto text-[10px] bg-neutral-900/10 dark:bg-white/10 px-1.5 py-0.5 rounded-full">
                     {orders.length}
                   </span>
                 )}
                 {item.id === "products" && allProducts.length > 0 && (
-                  <span className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full">
+                  <span className="ml-auto text-[10px] bg-neutral-900/10 dark:bg-white/10 px-1.5 py-0.5 rounded-full">
                     {allProducts.length}
                   </span>
                 )}
               </button>
             ))}
           </nav>
-          <div className="px-3 py-4 border-t border-neutral-800">
+          <div className="px-3 py-4 border-t border-neutral-200 dark:border-neutral-800">
             <button
               onClick={() => {
                 localStorage.removeItem("admin_auth");
                 router.push("/login");
               }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] text-neutral-500 hover:text-red-400 hover:bg-red-400/5 transition-all"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] text-neutral-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-400/5 transition-all"
             >
               <span>⊗</span> Гарах
             </button>
@@ -498,7 +558,7 @@ function Dashboard() {
         {/* Main */}
         <main className="flex-1 overflow-y-auto min-w-0">
           {/* Top bar */}
-          <div className="sticky top-0 z-10 bg-neutral-950/90 backdrop-blur border-b border-neutral-800 px-6 py-4 flex items-center justify-between">
+          <div className="sticky top-0 z-10 bg-neutral-100/90 dark:bg-neutral-950/90 backdrop-blur border-b border-neutral-200 dark:border-neutral-800 px-6 py-4 flex items-center justify-between">
             <h1 className="text-[16px] font-semibold">
               {tab === "overview"
                 ? "Ерөнхий мэдээлэл"
@@ -508,16 +568,19 @@ function Dashboard() {
                     ? `Бүтээгдэхүүн (${allProducts.length})`
                     : `Хэрэглэгчид (${users.length})`}
             </h1>
-            <div className="flex gap-1 md:hidden">
-              {TABS.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`px-2 py-1 rounded-lg text-[10px] font-medium transition-all ${tab === t.id ? "bg-white/10 text-white" : "text-neutral-500"}`}
-                >
-                  {t.icon}
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              <div className="flex gap-1 md:hidden">
+                {TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-medium transition-all ${tab === t.id ? "bg-neutral-900/10 dark:bg-white/10 text-neutral-900 dark:text-white" : "text-neutral-500"}`}
+                  >
+                    {t.icon}
+                  </button>
+                ))}
+              </div>
+              <ThemeToggle />
             </div>
           </div>
 
@@ -550,27 +613,27 @@ function Dashboard() {
                   ].map((s) => (
                     <div
                       key={s.label}
-                      className="bg-neutral-900 rounded-2xl border border-neutral-800 p-5"
+                      className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5"
                     >
                       <p className="text-[26px] font-semibold">{s.value}</p>
-                      <p className="text-[12px] text-neutral-400 mt-1">
+                      <p className="text-[12px] text-neutral-600 dark:text-neutral-400 mt-1">
                         {s.label}
                       </p>
-                      <p className="text-[11px] text-neutral-600 mt-0.5">
+                      <p className="text-[11px] text-neutral-400 dark:text-neutral-600 mt-0.5">
                         {s.sub}
                       </p>
                     </div>
                   ))}
                 </div>
 
-                <div className="bg-neutral-900 rounded-2xl border border-neutral-800 p-5">
-                  <h3 className="text-[14px] font-medium mb-4 text-neutral-300">
+                <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5">
+                  <h3 className="text-[14px] font-medium mb-4 text-neutral-700 dark:text-neutral-300">
                     Захиалгын төлөв
                   </h3>
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                     {Object.entries(STATUS).map(([key, cfg]) => {
                       const count = orders.filter(
-                        (o: any) => o.status === key,
+                        (o: Order) => o.status === key,
                       ).length;
                       return (
                         <button
@@ -579,7 +642,7 @@ function Dashboard() {
                             setTab("orders");
                             setStatusFilter(key);
                           }}
-                          className={`p-4 rounded-xl text-left transition-all hover:scale-[1.02] ${cfg.bg} border border-white/5`}
+                          className={`p-4 rounded-xl text-left transition-all hover:scale-[1.02] ${cfg.bg} border border-neutral-900/5 dark:border-white/5`}
                         >
                           <p
                             className={`text-[24px] font-semibold ${cfg.color}`}
@@ -597,28 +660,28 @@ function Dashboard() {
                   </div>
                 </div>
 
-                <div className="bg-neutral-900 rounded-2xl border border-neutral-800 p-5">
+                <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-[14px] font-medium text-neutral-300">
+                    <h3 className="text-[14px] font-medium text-neutral-700 dark:text-neutral-300">
                       Сүүлийн захиалгууд
                     </h3>
                     <button
                       onClick={() => setTab("orders")}
-                      className="text-[12px] text-blue-400 hover:text-blue-300"
+                      className="text-[12px] text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300"
                     >
                       Бүгдийг харах →
                     </button>
                   </div>
                   <div className="space-y-3">
-                    {orders.slice(0, 5).map((o: any) => {
+                    {orders.slice(0, 5).map((o: Order) => {
                       const cfg = STATUS[o.status];
                       return (
                         <div
                           key={o.id}
-                          className="flex items-center justify-between py-2.5 border-b border-neutral-800 last:border-0"
+                          className="flex items-center justify-between py-2.5 border-b border-neutral-200 dark:border-neutral-800 last:border-0"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-[12px] font-medium text-neutral-400">
+                            <div className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-[12px] font-medium text-neutral-600 dark:text-neutral-400">
                               {(o.username || o.email || "?")[0].toUpperCase()}
                             </div>
                             <div>
@@ -668,13 +731,13 @@ function Dashboard() {
                       placeholder="Бүтээгдэхүүн хайх..."
                       value={productSearch}
                       onChange={(e) => setProductSearch(e.target.value)}
-                      className="w-full h-9 pl-8 pr-3 rounded-xl bg-neutral-900 border border-neutral-700 text-[13px] text-white placeholder-neutral-600 outline-none focus:border-neutral-500"
+                      className="w-full h-9 pl-8 pr-3 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 text-[13px] text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-600 outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
                     />
                   </div>
                   <select
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="h-9 px-3 rounded-xl bg-neutral-900 border border-neutral-700 text-[13px] text-white outline-none"
+                    className="h-9 px-3 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 text-[13px] text-neutral-900 dark:text-white outline-none"
                   >
                     <option value="all">Бүх төрөл</option>
                     {Object.entries(categoryLabels).map(([key, label]) => (
@@ -683,12 +746,12 @@ function Dashboard() {
                       </option>
                     ))}
                   </select>
-                  <div className="flex items-center h-9 px-3 rounded-xl bg-neutral-800 border border-neutral-700 text-[12px] text-neutral-400">
+                  <div className="flex items-center h-9 px-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-[12px] text-neutral-600 dark:text-neutral-400">
                     {filteredProducts.length} бүтээгдэхүүн
                   </div>
                   <button
                     onClick={() => setShowAddModal(true)}
-                    className="h-9 px-4 rounded-xl bg-white text-neutral-900 text-[12px] font-semibold hover:bg-neutral-100 transition-all flex items-center gap-1.5"
+                    className="h-9 px-4 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-[12px] font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-1.5"
                   >
                     + Нэмэх
                   </button>
@@ -699,37 +762,37 @@ function Dashboard() {
                     {Array.from({ length: 8 }).map((_, i) => (
                       <div
                         key={i}
-                        className="bg-neutral-900 rounded-2xl border border-neutral-800 p-4 animate-pulse"
+                        className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4 animate-pulse"
                       >
-                        <div className="w-full h-32 bg-neutral-800 rounded-xl mb-3" />
-                        <div className="h-3 w-3/4 bg-neutral-800 rounded-full mb-2" />
-                        <div className="h-3 w-1/2 bg-neutral-800 rounded-full" />
+                        <div className="w-full h-32 bg-neutral-100 dark:bg-neutral-800 rounded-xl mb-3" />
+                        <div className="h-3 w-3/4 bg-neutral-100 dark:bg-neutral-800 rounded-full mb-2" />
+                        <div className="h-3 w-1/2 bg-neutral-100 dark:bg-neutral-800 rounded-full" />
                       </div>
                     ))}
                   </div>
                 ) : filteredProducts.length === 0 ? (
-                  <div className="bg-neutral-900 rounded-2xl border border-neutral-800 p-12 text-center">
+                  <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-12 text-center">
                     <p className="text-neutral-500">Бүтээгдэхүүн олдсонгүй</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {filteredProducts.map((p: any) => (
+                    {filteredProducts.map((p: ProductWithCategory) => (
                       <div
                         key={p.id}
-                        className="bg-neutral-900 rounded-2xl border border-neutral-800 p-4 hover:border-neutral-700 transition-all group relative"
+                        className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4 hover:border-neutral-300 dark:hover:border-neutral-700 transition-all group relative"
                       >
                         {/* Edit / Delete buttons — hover дээр харагдана */}
                         <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
                           <button
                             onClick={() => openEdit(p)}
-                            className="w-7 h-7 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center hover:bg-blue-500/20 hover:border-blue-500/40 text-neutral-500 hover:text-blue-400 text-[12px]"
+                            className="w-7 h-7 rounded-lg bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 flex items-center justify-center hover:bg-blue-500/20 hover:border-blue-500/40 text-neutral-500 hover:text-blue-600 dark:hover:text-blue-400 text-[12px]"
                           >
                             ✎
                           </button>
                           <button
                             onClick={() => handleDelete(p.id, p.category, p.name)}
                             disabled={deleting === p.id}
-                            className="w-7 h-7 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center hover:bg-red-500/20 hover:border-red-500/40 text-neutral-500 hover:text-red-400 text-[12px]"
+                            className="w-7 h-7 rounded-lg bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 flex items-center justify-center hover:bg-red-500/20 hover:border-red-500/40 text-neutral-500 hover:text-red-500 dark:hover:text-red-400 text-[12px]"
                           >
                             {deleting === p.id ? (
                               <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24">
@@ -742,7 +805,7 @@ function Dashboard() {
                           </button>
                         </div>
 
-                        <div className="w-full h-32 bg-neutral-800 rounded-xl flex items-center justify-center overflow-hidden mb-3">
+                        <div className="w-full h-32 bg-neutral-100 dark:bg-neutral-800 rounded-xl flex items-center justify-center overflow-hidden mb-3">
                           {p.picture ? (
                             <img
                               src={p.picture}
@@ -754,10 +817,10 @@ function Dashboard() {
                           )}
                         </div>
                         <div className="space-y-1">
-                          <span className="inline-block text-[10px] font-medium text-neutral-500 bg-neutral-800 px-2 py-0.5 rounded-full">
+                          <span className="inline-block text-[10px] font-medium text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
                             {categoryLabels[p.category] ?? p.category}
                           </span>
-                          <p className="text-[12px] font-medium text-white line-clamp-2 leading-snug">
+                          <p className="text-[12px] font-medium text-neutral-900 dark:text-white line-clamp-2 leading-snug">
                             {p.name}
                           </p>
                           {p.chip && (
@@ -766,11 +829,11 @@ function Dashboard() {
                             </p>
                           )}
                           <div className="flex items-center justify-between pt-1">
-                            <p className="text-[13px] font-semibold text-white">
+                            <p className="text-[13px] font-semibold text-neutral-900 dark:text-white">
                               ${p.price?.toLocaleString()}
                             </p>
                             {p.year && (
-                              <p className="text-[11px] text-neutral-600">
+                              <p className="text-[11px] text-neutral-400 dark:text-neutral-600">
                                 {p.year}
                               </p>
                             )}
@@ -792,7 +855,7 @@ function Dashboard() {
                     placeholder="Хайх..."
                     value={orderSearch}
                     onChange={(e) => setOrderSearch(e.target.value)}
-                    className="flex-1 min-w-[160px] h-9 px-3 rounded-xl bg-neutral-900 border border-neutral-700 text-[13px] text-white placeholder-neutral-600 outline-none focus:border-neutral-500"
+                    className="flex-1 min-w-[160px] h-9 px-3 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 text-[13px] text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-600 outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
                   />
                   <div className="flex gap-1.5 flex-wrap">
                     {[
@@ -807,8 +870,8 @@ function Dashboard() {
                         onClick={() => setStatusFilter(s.id)}
                         className={`px-3 h-9 rounded-xl text-[11px] font-medium border transition-all ${
                           statusFilter === s.id
-                            ? "bg-white text-neutral-900 border-transparent"
-                            : "bg-neutral-900 text-neutral-400 border-neutral-700 hover:border-neutral-500"
+                            ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 border-transparent"
+                            : "bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border-neutral-300 dark:border-neutral-700 hover:border-neutral-400 dark:hover:border-neutral-500"
                         }`}
                       >
                         {s.label}
@@ -821,25 +884,30 @@ function Dashboard() {
                   Array.from({ length: 4 }).map((_, i) => (
                     <div
                       key={i}
-                      className="bg-neutral-900 rounded-2xl border border-neutral-800 h-20 animate-pulse"
+                      className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 h-20 animate-pulse"
                     />
                   ))
                 ) : (
                   <div className="space-y-2">
-                    {filteredOrders.map((o: any) => {
+                    {filteredOrders.length === 0 && (
+                      <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-12 text-center">
+                        <p className="text-neutral-500">Захиалга олдсонгүй</p>
+                      </div>
+                    )}
+                    {filteredOrders.map((o: Order) => {
                       const cfg = STATUS[o.status];
                       const isOpen = selected?.id === o.id;
                       return (
                         <div
                           key={o.id}
-                          className={`bg-neutral-900 rounded-2xl border transition-all ${isOpen ? "border-white/20" : "border-neutral-800 hover:border-neutral-700"}`}
+                          className={`bg-white dark:bg-neutral-900 rounded-2xl border transition-all ${isOpen ? "border-neutral-900/20 dark:border-white/20" : "border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700"}`}
                         >
                           <div
                             className="flex items-center justify-between p-4 cursor-pointer"
                             onClick={() => setSelected(isOpen ? null : o)}
                           >
                             <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-full bg-neutral-800 flex items-center justify-center text-[13px] font-medium text-neutral-400 flex-shrink-0">
+                              <div className="w-9 h-9 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-[13px] font-medium text-neutral-600 dark:text-neutral-400 flex-shrink-0">
                                 {(o.username ||
                                   o.email ||
                                   "?")[0].toUpperCase()}
@@ -849,7 +917,7 @@ function Dashboard() {
                                   <p className="text-[13px] font-medium">
                                     {o.username || "Зочин"}
                                   </p>
-                                  <span className="text-[11px] font-mono text-neutral-600">
+                                  <span className="text-[11px] font-mono text-neutral-400 dark:text-neutral-600">
                                     #{o.id.slice(-6).toUpperCase()}
                                   </span>
                                 </div>
@@ -875,15 +943,15 @@ function Dashboard() {
                               <p className="text-[14px] font-semibold">
                                 ${o.total.toLocaleString()}
                               </p>
-                              <span className="text-neutral-600 text-[12px]">
+                              <span className="text-neutral-400 dark:text-neutral-600 text-[12px]">
                                 {isOpen ? "▲" : "▼"}
                               </span>
                             </div>
                           </div>
                           {isOpen && (
-                            <div className="border-t border-neutral-800 p-4 space-y-4">
+                            <div className="border-t border-neutral-200 dark:border-neutral-800 p-4 space-y-4">
                               <div className="space-y-2">
-                                {o.items.map((item: any, j: number) => (
+                                {o.items.map((item: OrderItem, j: number) => (
                                   <div
                                     key={j}
                                     className="flex items-center gap-3"
@@ -892,7 +960,7 @@ function Dashboard() {
                                       <img
                                         src={item.picture}
                                         alt={item.name}
-                                        className="w-10 h-10 object-contain bg-neutral-800 rounded-lg"
+                                        className="w-10 h-10 object-contain bg-neutral-100 dark:bg-neutral-800 rounded-lg"
                                       />
                                     )}
                                     <div className="flex-1">
@@ -912,17 +980,17 @@ function Dashboard() {
                                 ))}
                               </div>
                               <div className="grid grid-cols-2 gap-3 text-[12px]">
-                                <div className="bg-neutral-800/50 rounded-xl p-3">
+                                <div className="bg-neutral-100 dark:bg-neutral-800/50 rounded-xl p-3">
                                   <p className="text-neutral-500 mb-1">Хаяг</p>
-                                  <p className="text-neutral-200">
+                                  <p className="text-neutral-800 dark:text-neutral-200">
                                     {o.address}
                                   </p>
                                 </div>
-                                <div className="bg-neutral-800/50 rounded-xl p-3">
+                                <div className="bg-neutral-100 dark:bg-neutral-800/50 rounded-xl p-3">
                                   <p className="text-neutral-500 mb-1">
                                     Төлбөр
                                   </p>
-                                  <p className="text-neutral-200">
+                                  <p className="text-neutral-800 dark:text-neutral-200">
                                     {PAY[o.paymentMethod] || o.paymentMethod}
                                   </p>
                                 </div>
@@ -939,7 +1007,7 @@ function Dashboard() {
                                       className={`px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
                                         o.status === key
                                           ? `${cfg.bg} ${cfg.color} border-current`
-                                          : "bg-neutral-800 text-neutral-500 border-neutral-700 hover:border-neutral-500"
+                                          : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border-neutral-300 dark:border-neutral-700 hover:border-neutral-400 dark:hover:border-neutral-500"
                                       }`}
                                     >
                                       {cfg.label}
@@ -959,9 +1027,9 @@ function Dashboard() {
 
             {/* USERS */}
             {tab === "users" && (
-              <div className="bg-neutral-900 rounded-2xl border border-neutral-800 overflow-hidden">
-                <div className="px-5 py-4 border-b border-neutral-800">
-                  <h3 className="text-[14px] font-medium text-neutral-300">
+              <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+                <div className="px-5 py-4 border-b border-neutral-200 dark:border-neutral-800">
+                  <h3 className="text-[14px] font-medium text-neutral-700 dark:text-neutral-300">
                     Бүртгэлтэй хэрэглэгчид
                   </h3>
                 </div>
@@ -970,28 +1038,33 @@ function Dashboard() {
                     {Array.from({ length: 5 }).map((_, i) => (
                       <div
                         key={i}
-                        className="h-12 bg-neutral-800 rounded-xl animate-pulse"
+                        className="h-12 bg-neutral-100 dark:bg-neutral-800 rounded-xl animate-pulse"
                       />
                     ))}
                   </div>
                 ) : (
-                  <div className="divide-y divide-neutral-800">
-                    {users.map((u: any) => {
+                  <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                    {users.length === 0 && (
+                      <p className="p-5 text-[13px] text-neutral-500 text-center">
+                        Хэрэглэгч олдсонгүй
+                      </p>
+                    )}
+                    {users.map((u: User) => {
                       const userOrders = orders.filter(
-                        (o: any) =>
+                        (o: Order) =>
                           o.phone === u.phoneNumber || o.userId === u._id,
                       );
                       return (
                         <div
                           key={u._id}
-                          className="flex items-center gap-4 px-5 py-4 hover:bg-white/[0.03] transition-colors"
+                          className="flex items-center gap-4 px-5 py-4 hover:bg-neutral-900/[0.03] dark:hover:bg-white/[0.03] transition-colors"
                         >
                           <div className="relative w-9 h-9 flex-shrink-0">
-                            <div className="w-9 h-9 rounded-full bg-neutral-800 flex items-center justify-center text-[13px] font-medium text-neutral-400">
-                              {u.username[0].toUpperCase()}
+                            <div className="w-9 h-9 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-[13px] font-medium text-neutral-600 dark:text-neutral-400">
+                              {(u.username || "?")[0].toUpperCase()}
                             </div>
                             {u.authProvider === "google" && (
-                              <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-neutral-900 flex items-center justify-center">
+                              <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white dark:bg-neutral-900 flex items-center justify-center">
                                 <svg width="10" height="10" viewBox="0 0 24 24">
                                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                                   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -1007,7 +1080,7 @@ function Dashboard() {
                                 {u.username}
                               </p>
                               {u.authProvider === "google" && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 leading-none">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 leading-none">
                                   Google
                                 </span>
                               )}
@@ -1022,7 +1095,7 @@ function Dashboard() {
                             </p>
                             <p className="text-[11px] text-neutral-500">
                               {userOrders
-                                .reduce((s: number, o: any) => s + o.total, 0)
+                                .reduce((s: number, o: Order) => s + o.total, 0)
                                 .toLocaleString()}
                               $
                             </p>
@@ -1044,12 +1117,12 @@ function Dashboard() {
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(0,0,0,0.75)" }}
         >
-          <div className="bg-neutral-900 rounded-2xl border border-neutral-800 p-6 w-full max-w-md">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-[16px] font-semibold">Бүтээгдэхүүн засах</h2>
               <button
                 onClick={() => setEditingProduct(null)}
-                className="w-7 h-7 rounded-lg bg-neutral-800 text-neutral-400 hover:text-white transition-colors flex items-center justify-center text-[14px]"
+                className="w-7 h-7 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors flex items-center justify-center text-[14px]"
               >
                 ✕
               </button>
@@ -1070,26 +1143,26 @@ function Dashboard() {
                   <input
                     type="text"
                     placeholder={field.placeholder}
-                    value={(editForm as any)[field.key]}
+                    value={editForm[field.key as keyof typeof editForm]}
                     onChange={(e) =>
                       setEditForm((prev) => ({ ...prev, [field.key]: e.target.value }))
                     }
-                    className="w-full h-10 px-3 rounded-xl bg-neutral-800 border border-neutral-700 text-[13px] text-white placeholder-neutral-600 outline-none focus:border-neutral-500 transition-colors"
+                    className="w-full h-10 px-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-[13px] text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-600 outline-none focus:border-neutral-400 dark:focus:border-neutral-500 transition-colors"
                   />
                 </div>
               ))}
 
               {editForm.picture && (
-                <div className="flex items-center gap-3 p-3 bg-neutral-800 rounded-xl">
+                <div className="flex items-center gap-3 p-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl">
                   <img
                     src={editForm.picture}
                     alt="preview"
-                    className="w-12 h-12 object-contain rounded-lg bg-neutral-700"
+                    className="w-12 h-12 object-contain rounded-lg bg-neutral-200 dark:bg-neutral-700"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                   />
                   <div>
-                    <p className="text-[12px] font-medium text-white">{editForm.name || "Нэр оруулна уу"}</p>
-                    <p className="text-[11px] text-neutral-400">{editForm.price ? `$${Number(editForm.price).toLocaleString()}` : ""}</p>
+                    <p className="text-[12px] font-medium text-neutral-900 dark:text-white">{editForm.name || "Нэр оруулна уу"}</p>
+                    <p className="text-[11px] text-neutral-600 dark:text-neutral-400">{editForm.price ? `$${Number(editForm.price).toLocaleString()}` : ""}</p>
                   </div>
                 </div>
               )}
@@ -1098,14 +1171,14 @@ function Dashboard() {
             <div className="flex gap-3 mt-5">
               <button
                 onClick={() => setEditingProduct(null)}
-                className="flex-1 h-10 rounded-xl border border-neutral-700 text-neutral-400 text-[13px] hover:border-neutral-500 transition-all"
+                className="flex-1 h-10 rounded-xl border border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 text-[13px] hover:border-neutral-400 dark:hover:border-neutral-500 transition-all"
               >
                 Цуцлах
               </button>
               <button
                 onClick={handleEdit}
                 disabled={!editForm.name || !editForm.price || editLoading}
-                className="flex-1 h-10 rounded-xl bg-white text-neutral-900 text-[13px] font-semibold hover:bg-neutral-100 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                className="flex-1 h-10 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-[13px] font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
               >
                 {editLoading ? (
                   <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
@@ -1127,7 +1200,7 @@ function Dashboard() {
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: "rgba(0,0,0,0.75)" }}
         >
-          <div className="bg-neutral-900 rounded-2xl border border-neutral-800 p-6 w-full max-w-md">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-[16px] font-semibold">Бүтээгдэхүүн нэмэх</h2>
               <button
@@ -1135,7 +1208,7 @@ function Dashboard() {
                   setShowAddModal(false);
                   setAddForm(EMPTY_FORM);
                 }}
-                className="w-7 h-7 rounded-lg bg-neutral-800 text-neutral-400 hover:text-white transition-colors flex items-center justify-center text-[14px]"
+                className="w-7 h-7 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors flex items-center justify-center text-[14px]"
               >
                 ✕
               </button>
@@ -1154,7 +1227,7 @@ function Dashboard() {
                       category: e.target.value,
                     }))
                   }
-                  className="w-full h-10 px-3 rounded-xl bg-neutral-800 border border-neutral-700 text-[13px] text-white outline-none focus:border-neutral-500"
+                  className="w-full h-10 px-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-[13px] text-neutral-900 dark:text-white outline-none focus:border-neutral-400 dark:focus:border-neutral-500"
                 >
                   {Object.entries(categoryLabels).map(([key, label]) => (
                     <option key={key} value={key}>
@@ -1186,34 +1259,34 @@ function Dashboard() {
                   <input
                     type="text"
                     placeholder={field.placeholder}
-                    value={(addForm as any)[field.key]}
+                    value={addForm[field.key as keyof typeof addForm]}
                     onChange={(e) =>
                       setAddForm((prev) => ({
                         ...prev,
                         [field.key]: e.target.value,
                       }))
                     }
-                    className="w-full h-10 px-3 rounded-xl bg-neutral-800 border border-neutral-700 text-[13px] text-white placeholder-neutral-600 outline-none focus:border-neutral-500 transition-colors"
+                    className="w-full h-10 px-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-[13px] text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-600 outline-none focus:border-neutral-400 dark:focus:border-neutral-500 transition-colors"
                   />
                 </div>
               ))}
 
               {/* Preview */}
               {addForm.picture && (
-                <div className="flex items-center gap-3 p-3 bg-neutral-800 rounded-xl">
+                <div className="flex items-center gap-3 p-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl">
                   <img
                     src={addForm.picture}
                     alt="preview"
-                    className="w-12 h-12 object-contain rounded-lg bg-neutral-700"
+                    className="w-12 h-12 object-contain rounded-lg bg-neutral-200 dark:bg-neutral-700"
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.display = "none";
                     }}
                   />
                   <div>
-                    <p className="text-[12px] font-medium text-white">
+                    <p className="text-[12px] font-medium text-neutral-900 dark:text-white">
                       {addForm.name || "Нэр оруулна уу"}
                     </p>
-                    <p className="text-[11px] text-neutral-400">
+                    <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
                       {addForm.price
                         ? `$${Number(addForm.price).toLocaleString()}`
                         : ""}
@@ -1229,14 +1302,14 @@ function Dashboard() {
                   setShowAddModal(false);
                   setAddForm(EMPTY_FORM);
                 }}
-                className="flex-1 h-10 rounded-xl border border-neutral-700 text-neutral-400 text-[13px] hover:border-neutral-500 transition-all"
+                className="flex-1 h-10 rounded-xl border border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 text-[13px] hover:border-neutral-400 dark:hover:border-neutral-500 transition-all"
               >
                 Цуцлах
               </button>
               <button
                 onClick={handleAdd}
                 disabled={!addForm.name || !addForm.price || addLoading}
-                className="flex-1 h-10 rounded-xl bg-white text-neutral-900 text-[13px] font-semibold hover:bg-neutral-100 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                className="flex-1 h-10 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-[13px] font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
               >
                 {addLoading ? (
                   <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
