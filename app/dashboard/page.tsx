@@ -161,6 +161,26 @@ const UPDATE_STATUS = gql`
   }
 `;
 
+const GET_FEATURED = gql`
+  query GetFeaturedProducts {
+    getFeaturedProducts {
+      id
+      name
+      category
+    }
+  }
+`;
+
+const SET_FEATURED = gql`
+  mutation SetFeaturedProducts($items: [FeaturedItemInput!]!) {
+    setFeaturedProducts(items: $items) {
+      id
+      name
+      category
+    }
+  }
+`;
+
 const DELETE_PRODUCT = gql`
   mutation DeleteProduct($id: ID!, $category: String!) {
     deleteProduct(id: $id, category: $category)
@@ -236,6 +256,14 @@ interface Product {
 }
 
 type ProductWithCategory = Product & { category: string };
+
+interface FeaturedProduct {
+  id: string;
+  name: string;
+  category: string;
+}
+
+const MAX_FEATURED = 6;
 
 const categoryRoutes: Record<string, string> = {
   getAlliMac: "imac",
@@ -364,7 +392,10 @@ function Dashboard() {
   } = useQuery<Record<string, Product[]>>(GET_ALL_PRODUCTS, {
     fetchPolicy: "network-only",
   });
+  const { data: featuredData, refetch: refetchFeatured } =
+    useQuery<{ getFeaturedProducts: FeaturedProduct[] }>(GET_FEATURED);
   const [updateStatus] = useMutation(UPDATE_STATUS);
+  const [setFeatured, { loading: featuredSaving }] = useMutation(SET_FEATURED);
   const [deleteProduct] = useMutation(DELETE_PRODUCT);
   const [addProduct] = useMutation(ADD_PRODUCT);
 
@@ -406,6 +437,30 @@ function Dashboard() {
     (o: Order) =>
       new Date(o.createdAt).toDateString() === new Date().toDateString(),
   ).length;
+
+  const featured = featuredData?.getFeaturedProducts ?? [];
+  const isFeatured = (id: string) => featured.some((f) => f.id === id);
+
+  const toggleFeatured = async (p: ProductWithCategory) => {
+    const items = isFeatured(p.id)
+      ? featured
+          .filter((f) => f.id !== p.id)
+          .map((f) => ({ productId: f.id, category: f.category }))
+      : [
+          ...featured.map((f) => ({ productId: f.id, category: f.category })),
+          { productId: p.id, category: p.category },
+        ];
+    if (items.length > MAX_FEATURED) {
+      alert(`Хамгийн ихдээ ${MAX_FEATURED} бүтээгдэхүүн онцлох боломжтой`);
+      return;
+    }
+    try {
+      await setFeatured({ variables: { items } });
+      await refetchFeatured();
+    } catch {
+      alert("Онцлох тохиргоо хадгалахад алдаа гарлаа");
+    }
+  };
 
   const handleStatus = async (id: string, status: string) => {
     try {
@@ -749,6 +804,12 @@ function Dashboard() {
                   <div className="flex items-center h-9 px-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-[12px] text-neutral-600 dark:text-neutral-400">
                     {filteredProducts.length} бүтээгдэхүүн
                   </div>
+                  <div
+                    className="flex items-center h-9 px-3 rounded-xl bg-amber-400/10 border border-amber-400/30 text-[12px] text-amber-600 dark:text-amber-400"
+                    title="Нүүр хуудасны Онцлох хэсэгт харагдана"
+                  >
+                    ⭐ {featured.length}/{MAX_FEATURED}
+                  </div>
                   <button
                     onClick={() => setShowAddModal(true)}
                     className="h-9 px-4 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-[12px] font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-1.5"
@@ -779,10 +840,35 @@ function Dashboard() {
                     {filteredProducts.map((p: ProductWithCategory) => (
                       <div
                         key={p.id}
-                        className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4 hover:border-neutral-300 dark:hover:border-neutral-700 transition-all group relative"
+                        className={`bg-white dark:bg-neutral-900 rounded-2xl border p-4 transition-all group relative ${
+                          isFeatured(p.id)
+                            ? "border-amber-400/60 dark:border-amber-400/40"
+                            : "border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700"
+                        }`}
                       >
-                        {/* Edit / Delete buttons — hover дээр харагдана */}
+                        {isFeatured(p.id) && (
+                          <span className="absolute top-3 left-3 z-10 text-[10px] font-medium bg-amber-400/15 text-amber-600 dark:text-amber-400 border border-amber-400/30 px-1.5 py-0.5 rounded-full">
+                            ⭐ Онцлох
+                          </span>
+                        )}
+                        {/* Featured / Edit / Delete buttons — hover дээр харагдана */}
                         <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
+                          <button
+                            onClick={() => toggleFeatured(p)}
+                            disabled={featuredSaving}
+                            title={
+                              isFeatured(p.id)
+                                ? "Онцлохоос хасах"
+                                : "Нүүр хуудсанд онцлох"
+                            }
+                            className={`w-7 h-7 rounded-lg border flex items-center justify-center text-[12px] disabled:opacity-40 ${
+                              isFeatured(p.id)
+                                ? "bg-amber-400/20 border-amber-400/50 text-amber-500 dark:text-amber-400"
+                                : "bg-neutral-100 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 text-neutral-500 hover:bg-amber-400/20 hover:border-amber-400/50 hover:text-amber-500 dark:hover:text-amber-400"
+                            }`}
+                          >
+                            ★
+                          </button>
                           <button
                             onClick={() => openEdit(p)}
                             className="w-7 h-7 rounded-lg bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 flex items-center justify-center hover:bg-blue-500/20 hover:border-blue-500/40 text-neutral-500 hover:text-blue-600 dark:hover:text-blue-400 text-[12px]"
